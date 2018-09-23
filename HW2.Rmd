@@ -17,30 +17,55 @@ Readings: Chapters 3-4 in Weisberg Applied Linear Regression
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-This exercise involves the UN data set from `alr3` package. Install `alr3` and the `car` packages and load the data to answer the following questions adding your code in the code chunks.  Please add appropriate code to the chunks to suppress messages and warnings as needed once you are sure the code is working properly and remove instructions if no longer needed. Figures should have informative captions. Please switch the output to pdf for your final version to upload to Sakai. **Remove these instructions for final submission**
-
 
 ## Exploratory Data Analysis
 
 0.  Preliminary read in the data.  After testing, modify the code chunk so that output, messages and warnings are suppressed.  *Exclude text from final*
 
-```{r data}
+```{r data, results = "hide", message = FALSE, warning = FALSE }
 library(alr3)
 data(UN3, package="alr3")
 help(UN3) 
 library(car)
+
+library(knitr)
+
+library(ggplot2)
+library(GGally)
+
+library(dplyr)
+
+library(psych)
+
 ```
 
 
 1. Create a summary of the data.  How many variables have missing data?  Which are quantitative and which are qualtitative?
 
 ```{r}
-
+summary(UN3)
+str(UN3)
 ```
+
+**Analysis**
+
+According to the results shown above, there are six variables have missing data: ModernC, Change, PPgdp, Frate, Pop, Fertility.  
+
+All variables are quantitative, no variable is qualtitative.    
+  
 
 2. What is the mean and standard deviation of each quantitative predictor?  Provide in a nicely formatted table.
 
-```{r}
+```{r, results = "asis"}
+UN3_mean <- colMeans(UN3, na.rm = T)
+UN3_sd <- apply(as.data.frame(UN3), 2, function(x) sd(x, na.rm = T))
+
+mean_sd <- data.frame(UN3_mean, UN3_sd)
+
+kable(mean_sd, format = "markdown", col.names = c("Mean", "Standard Error"), 
+      digits = 2, caption = "Mean and Standard Deriation of Each Quantitative Predictor")
+
+
 
 ```
 
@@ -49,53 +74,205 @@ library(car)
 highlighting the relationships among the predictors. Comment
 on your findings regarding trying to predict `ModernC` from the other variables.  Are there potential outliers, nonlinear relationships or transformations that appear to be needed based on your graphical EDA?
 
-```{r}
+```{r, warning = F}
+
+ggpairs(UN3, progress = FALSE, title = "Scatterplot for UN3")
 
 ```
-
+  
+  **Comment**
+  
+  According to the scatterplots above, variable "Fertility", "Purban", "Change" and "PPgdp" are likely to predict "MondernC", since these four variables have the largest correlation coefficient. The coefficients are -0.773, 0.562, -0.555 and 0.552 seperately.  
+  
+  Besides, there are some potential outliers in variables "Pop" and "PPgdp". The relationship between "ModernC" and "PPgdp" seems to be nonlinear, so they may need to be transfromed. 
+  
 ## Model Fitting
 
 4.  Use the `lm()` function to perform a multiple linear regression with `ModernC` as the response and all other variables as the predictors, using the formula `ModernC ~ .`, where the `.` includes all remaining variables in the dataframe.  Create  diagnostic residual plot from the linear model object and comment on results regarding assumptions.  How many observations are used in your model fitting?
 
 ```{r}
+lm1 <- lm(ModernC ~., data = UN3)
+summary(lm1)
+
+par(mfrow = c(2, 2))
+plot(lm1, ask = F)
 
 ```
+
+**Comment on the diagnostic residual plot**
+
+a. The scatterplot of residuals shows that the expected value of $\hat{e}$ equals to 0, since the residuals randomly distributed around zero. However, the sample Cook.Islands, Azerbaijan, Poland have larger residuals. 
+
+
+b. The Normal Q-Q plot shows that most residuals can be considered to be from a normal distribution, but the tail behavior of standardized residuals are different from normal distribution, especially the sample of Cook.Islands, Azerbaijan and Poland.
+
+c. Ingnore the point Cook.Islands, Azerbaijan and Poland, the Scale-Location plot indicates that we can not reject the assumption that the variance of residuals is a constant.  
+
+d. The leverage values of China and India is largest, so they might be outliers. However, they may not be influential, since the leverage values are less than 0.6. We need to make further tests on these points. 
+
+**Observation used in the model fitting**
+
+The total observation in UN3 dataset is 210. As shown in the result of summary function, 85 observations are deleted due to missingness, so there are $210-85=125$ observations used in the model fiiting.  
+
+Another calculation method is that, since the degree of freedom of t statistics is 118, there are $118+6+1=125$ observations used in the modeling fitting.
+
 
 5. Examine added variable plots `car::avPlot` or `car::avPlots`  for your model above. Are there any plots that suggest that transformations are needed for any of the terms in the model? Describe. Is it likely that any of the localities are influential for any of the terms?  Which localities?  Which terms?  
 
 ```{r}
 
-```
+avPlots(lm1,intercept = FALSE)
+
+```  
+  
+**Analysis**
+
+According to the plots above, the partial-regression for variable "Pop" suggests that transformations is needed for "Pop", since the linear relationship between the predictor "Pop" and the response "ModernC" is not significant in this plot. Also,in the same plot, the sample India and China seem to be influential for term "Pop", because they are far away from the other points in the plot and the regression line is tilted towards these two points. In the other five plots, the scatter points randomly distribute around the regression line, so there are not enough evidence to support that they need transformation. 
 
 6.  Using the Box-Tidwell  `car::boxTidwell` or graphical methods find appropriate transformations of the predictor variables to be used as predictors in the linear model.  If any predictors are negative, you may need to transform so that they are non-negative.  Describe your method and  the resulting transformations.
 
 
 ```{r}
+boxTidwell(ModernC ~ Pop + PPgdp, ~Change + Frate + 
+             Fertility + Purban, data = UN3)
 
 ```
+
+**Analysis**
+
+In problem 3, we doubt that variable "ModernC" and "PPgdp" may have nonlinear relationship. In problem 4, it seems that we need to make a transformation for variable "Pop". Thus, in this part, we will look for appropriate transformations of "PPgdp" and "Pop" through the method Box-Cox, and the results are shown above. 
+
+Based on the result, the lambda for "Pop" and "PPgdp" are estimated to be 0.41 and -0.13.  
+
+In order to make the linear regression more interpretable, we make a log transformation for "PPgdp" and a sqrt transfprmation for "Pop".
+
 
 7. Given the selected transformations of the predictors, select a transformation of the response using `MASS::boxcox` or `car::boxCox` and justify.
 
 
 ```{r}
+transUN3 <- UN3 %>% mutate(transPop = sqrt(Pop), transPPgdp = log(PPgdp))
 
-```
+boxCox(lm(ModernC ~ Change + Frate + Fertility + 
+            Purban + transPop + transPPgdp, data = transUN3))
+title("Profile log-likelihood - after predictors' tranformation")
+```  
+
+**Analysis**
+
+When $\lambda$ is in the interval[0.6, 1], we could get the largest value for log-likelihood. In order to make the regression more intrepretable, we choose $\lambda=1$, which means that there is no need to tranform the response.  
 
 8.  Fit the regression using the transformed variables.  Provide residual plots and added variables plots and comment.  If you feel that you need additional transformations of either the response or predictors, repeat any steps until you feel satisfied.
+
+```{r}
+
+lm2 <- lm(ModernC ~ Change + Frate + Fertility  + 
+            transPop + transPPgdp + Purban, data = transUN3)
+summary(lm2)
+
+par(mfrow = c(2,2))
+plot(lm2, ask = F)
+
+avPlots(lm2)
+
+```  
+**Analysis for Residuals**  
+
+a. The Residuals vs Fitted plot support the assumption that the $E(\epsilon|X)=0$, since the scatter points randomly distributed around 0. However, sample 13, 45 and 150 have larger residual, which means that they may be outliers.
+
+b. The Normal Q-Q plot shows that the distribution of residual has heavy tail. In particular, case 45 and 150. But it seems that most points are still from a normal distribution.  
+
+c. The scale-location plot provides evidence that the $\epsilon$ has constant variation.  
+
+d. Alough there are some points have larger leverage value, such as case 101 and 86, these points may not be influential.  
+
+**Analysis for Added-Varaible Plots**  
+After transformation, the linear relationship between Pop and ModernC, PPgdp and ModernC become stronger. There is no need to make a transformation moreover.
+
 
 9. Start by finding the best transformation of the response and then find transformations of the predictors.  Do you end up with a different model than in 8?
 
 
 ```{r}
 
-```
+boxCox(lm(ModernC ~., data = UN3))
+title("Profile log-likelihood - before predictors' tranformation")
 
-10.  Are there any outliers or influential points in the data?  Explain.  If so, refit the model after removing any outliers and comment on residual plots.
+```  
 
+**Analysis**
+
+The plot above is similar with the plot in problem 7. We still choose $\lambda=1$, so the response does not need transformation. The arguments in boxTidewell function are the same as those in problem 6, and the results are the same. Thus, the transformtion of response and predictors do not change, which means that we do not end up with a different model than in 8.
+
+10.  Are there any outliers or influential points in the data?  Explain.  If so, refit the model after removing any outliers and comment on residual plots.  
+
+**Outlier**  
+
+As shown in the diagnostic residual plot in problem 8, case 13, 45 and 150 are likely to be outliers, since their residuals are larger. So we remove these points and refit the model.  
 
 ```{r}
 
+transUN3_withoutoutlier <- transUN3[-c(13, 45, 150), ]
+
+lm3 <- lm(ModernC ~ Change + Frate + Fertility  + 
+            transPop + transPPgdp + Purban, data = transUN3_withoutoutlier)
+
+summary(lm3)
+
+par(mfrow = c(2,2))
+plot(lm3, ask = F)
+
+
 ```
+
+**Analysis after Romove the Outlier**  
+
+In the first, second and third plots above, there are still some larger value of residuals after removing the case 13, 45 and 150. The adjusted $R^{2}$ significantly increases from 0.618 to 0.667. Since we should be cautious to delete cases and these values are not significantly larger than any other values, we think it is  enough to delete case 13, 25 and 150.
+
+**Influential Point**  
+In problem 5, the sample India and China seem to be influential for term Pop, because they are far away from the other points in the plot and the regression line is tilted towardsthese two points. So we try to delete these two points.
+
+
+```{r}
+index = which(row.names(UN3) %in% c("China", "India"))
+
+transUN3_nooutlierinflu = transUN3[-c(index, 13, 45, 150), ]
+
+lm4 <- lm(ModernC ~ Change + Frate + Fertility  + 
+            transPop + transPPgdp + Purban, data = transUN3_nooutlierinflu)
+
+summary(lm4)
+
+par(mfrow = c(2,2))
+plot(lm4, ask = F)
+
+```
+
+After removing case "China" and "India", there is no significantly change in the diagnostic residual plot. The $\hat{\beta}_{Pop}$ changes slightly from 0.023 to 
+0.026. So there is no enough evidence that case "China" and "India" are influential cases and we should delete it.  
+
+
+**T-test for Outliers**  
+
+Here we make a t-test for case 13, 25 and 150. Since case 150 have the largets residual, we first make the test for it.  
+  
+
+```{r}
+
+ti = abs(rstudent(lm2))
+(pval = 2*(1 - pt(max(ti), lm2$df - 1))*nrow(transUN3))
+
+```
+  
+The p-value indicates that we do not have enough evidence to reject the null hypothesis that case 150 is an outlier.  Since the residuals of case 13 and 25 is less than case 150, if we make a t-test on them, we could not reject the null hypothesis either.  
+
+
+**Conclusion**  
+In this problem, we first consider case 13, 25 and 150 as outliers. After removing them, the refitted model lm3 performs better than the previously model lm2. Then we continue to remove case "China" and "India", which is regarded as influential point, but the model lm4 has hardly change. So we just need to remove case 13, 25 and 150 in the problem. Finally, We try to make a t-test on the outlier and the p-value are larger than 0.5. 
+
+In my opinion, if our goal is to predict ModernC as accuracy as possible, it is reasonable to delete case 13, 25 and 150. But if interpreting the model is more important, we'd better not to delete these points.
+
+
 
 ## Summary of Results
 
@@ -103,16 +280,50 @@ on your findings regarding trying to predict `ModernC` from the other variables.
 
 
 ```{r}
+summary(lm3)$coef
 
+kable(confint(lm3), format = "markdown", 
+      col.names = c("lower confidence interval", "upper confidence interval"),
+      digits = 3)
 ```
 
+  
+**Interpretations of Coefficient**  
+-Intercept: While other preditors all equals to 0, the percent of unmarried women using a modern method of contraception is 103.74.  
 
-12. Provide a paragraph summarizing your final model  and findings suitable for the US envoy to the UN after adjusting for outliers or influential points.   You should provide a justification for any case deletions in your final model
+-Change: Keep other predictors unchanged, while the annual population growth rate increases by 1, the percent of unmarried women using a modern of contraception will increase by 5.73.  
+
+-Fertility: Keep other predictors unchanged, while the expected number of live births per female increases by 1 unit, the percent of unmarried women using a modern of contraception will decrease by 10.42.  
+
+-Pop: Keep other predictors unchanged, while the population increases by 1%, the percent of unmarried women using a modern method of contraception will increase by $(\sqrt{1.01}-1)\times 0.023\sqrt{transPop}=0.00011\sqrt{transPop}$.  
+
+-PPgdp: Keep other predictors unchanged, while the per capita 2001 GDP increase by 1%, the percent of unmarried women using a contraception will increase by 0.046.  
+
+The calculation process is shown below.  
+
+Since
+$$
+\begin{split}
+&\hat{\beta}_{transPPgdp}\log{1.01X_{transPPgdp}}\\
+=&\hat{\beta}_{transPPgdp}(\log{1.01}+\log{X_{transPPgdp}})\\
+=&\hat{\beta}_{transPPgdp}\log{1.01}+\hat{\beta}_{transPPgdp}\log{X_{transPPgdp}}
+\end{split}
+$$  
+The difference between $\hat{\beta}_{transPPgdp}\log{1.01X_{transPPgdp}}$ and $\hat{\beta}_{transPPgdp}\log{X_{transPPgdp}}$ is:   
+
+$$
+\begin{split}
+&\hat{\beta}_{transPPgdp}\log{1.01X_{transPPgdp}}-\hat{\beta}_{transPPgdp}\log{X_{transPPgdp}}\\
+=&\hat{\beta}_{transPPgdp}\log{1.01}\\
+=&0.046
+\end{split}
+$$
+-Purbn: Keep other predictors unchanged, while the percent of population that is urban increases by 1 unit, the percent of unmarried women using a modern of contraception will decrease by 0.036. We notice that Purbn is not significant in the regression model, but we need more economic theories to determine whether we should delete this varaible in the model or not. 
+
+12. Provide a paragraph summarizing your final model  and findings suitable for the US envoy to the UN after adjusting for outliers or influential points.   You should provide a justification for any case deletions in your final model.  
 
 
-```{r}
-
-```
+In the final model, the predictors we use could explain 66.7% of the variance of ModernC(Percent of unmarried women using a modern method ofcontraception). Predictors Change, Frate, Pop, PPgdp is positively related to ModernC, and Pertility as well as Purban is negatively related to ModernC. All the predictors are significant in the model except Pueban. But if we want to delete this variable, we need more theories to support us. The dataset contains 210 observations but only 122 are used in the final model. 3 outliers is removed. After removing the outliers, the model performs better. 85 observations are also deleted in the modeling fitting process due to the missing values. So this model could only explain the relationship between response and predictors in 122 countries. 
 
 
 ## Methodology
@@ -120,5 +331,85 @@ on your findings regarding trying to predict `ModernC` from the other variables.
     
 13. Prove that the intercept in the added variable scatter plot will always be zero.  _Hint:  use the fact that if $H$ is the project matrix which contains a column of ones, then $1_n^T (I - H) = 0$.  Use this to show that the sample mean of residuals will always be zero if there is an intercept._
 
+Solution:  
+$X_1,X_2,...,X_p$ are predictors and $X_{p+1}$ is the added variable.  
+We first regress $Y$ on $X_1,X_2,...,X_p$ and get the residuals $e_1$.   
+$$
+e_1 = (I-H)Y
+$$  
+where:
+$$
+\begin{split}
+H = X(X^TX)^{-1}X^T\\
+X = (1, X_1, X_2,...,X_P )\\
+\end{split}
+$$    
+
+Then we regress $X_{p+1}$ on $X_1,X_2,...,X_p$ and get the residuals $e_2$.
+$$
+e_2 = (I-H)X_{p+1}
+$$  
+Last we regress $e_1$ on $e_2$.
+$$
+e_{1i} = \hat{\beta_0}+\hat{\beta}_1e_{2i}+\text{residual}_i
+$$
+$$
+\begin{split}
+\hat{\beta_1}&=(e_2^Te_2)^{-1}e_2^Te_1\\
+&=(X_{p+1}^T(I-H)^T(I-H)X_{p+1})^{-1}X_{p+1}^T(I-H)^T(I-H)Y\\
+&=(X_{p+1}^T(I-H)X_{p+1})^{-1}X_{p+1}^T(I-H)Y
+\end{split}
+$$
+$$
+\begin{split}
+\hat{\beta_0}&=\bar{e_1}-\bar{e_2}\hat{\beta_1}\\
+&=\frac{1}{n}\mathbf{1}_n^T(I-H)Y-\frac{1}{n}\mathbf{1}_n^T(I-H)X_{p+1}(X_{p+1}^T(I-H)X_{p+1})^{-1}X_{p+1}^T(I-H)Y
+\end{split}
+$$  
+Since $H = X(X^TX)^{-1}X^T$ and $X$ contains a column of 1, we have:
+$$
+\begin{split}
+\mathbf{1}_n^T(I-H)Y=0\\
+\mathbf{1}_n^T(I-H)X_{p+1}=0\\
+\end{split}
+$$  
+So $\hat{\beta_0}=0$
+$$
+\begin{split}
+\frac{1}{n}\sum_{i=1}^{n}{\text{residuals}_i}&=\frac{1}{n}\sum_{i=1}^{n}(e_{1i}-\hat{\beta_0}-\hat{\beta_1}e_{2i})\\
+&=\frac{1}{n}\sum_{i=1}^{n}e_{1i}-\frac{\hat{\beta_1}}{n}\sum_{i=1}^{n}{e_{2i}}\\
+&=\frac{1}{n}\mathbf{1}_n^T(I-H)Y-\frac{\hat{\beta_1}}{n}\mathbf{1}_n^T(I-H)X_{p+1}\\
+&=0
+\end{split}
+$$  
+which shows that the sample mean of residuals will always be zero if there is an intercept.
 
 14. For multiple regression with more than 2 predictors, say a full model given by `Y ~ X1 + X2 + ... Xp`   we create the added variable plot for variable `j` by regressing `Y` on all of the `X`'s except `Xj` to form `e_Y` and then regressing `Xj` on all of the other X's to form `e_X`.  Confirm that the slope in a manually constructed added variable plot for one of the predictors  in Ex. 10 is the same as the estimate from your model. 
+
+We select variable "Change" to confirm the theory.
+
+First regress ModernC on Frate, Fertility, Pop(transformed), PPgdp(transformed) and Purban. $e_1$ is the residuals vector in this model.
+
+```{r}
+lm5 <- lm(ModernC ~ Frate + Fertility  + 
+            transPop + transPPgdp + Purban, data = na.omit(transUN3_withoutoutlier))
+
+e_1 = residuals(lm5)
+```  
+
+Then regress Change on Frate, Fertility, Pop(transformed), PPgdp(transformed) and Purban. $e_2$ is the residuals vector in this model.
+```{r}
+lm6 <- lm(Change ~ Frate + Fertility  + 
+            transPop + transPPgdp + Purban, data = na.omit(transUN3_withoutoutlier))
+
+e_2 = residuals(lm6)
+```
+Finally regression e_1 on e_2.
+```{r}
+lm7 <-lm(e_1 ~ e_2)
+summary(lm7)$coef[2]
+
+summary(lm3)$coef[2]
+```
+
+We can see that the coefficient of variable "Change" is the same as that in problem 10.
